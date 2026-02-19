@@ -1,1 +1,4 @@
 aima-python/
+__pycache__/
+*.pyc
+/problems/__pycache__

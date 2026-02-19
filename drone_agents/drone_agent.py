@@ -153,12 +153,84 @@ class AutonomousDroneAgent(SimpleProblemSolvingAgentProgram):
             "at_base": self._position == self.base_position,
         }
 
-    def formulate_goal(self, state: Any) -> tuple[int, int] | None:
-        """Formula o próximo objetivo do agente.
+    def _calcular_utilidade(
+        self, destino: tuple[int, int], retorno_base: bool = False
+    ) -> float:
+        """Calcula a Utilidade Máxima Esperada (MEU) de ir a um destino.
 
-        Estratégia:
-        1. Se há alvos pendentes → retorna coordenadas do alvo mais próximo
-        2. Se todos coletados → retorna base para pouso
+        Implementa o framework de decisão do AIMA Capítulo 16:
+            U(ação) = P(sucesso) × Recompensa - P(falha) × Penalidade
+
+        A probabilidade de sucesso é estimada pela razão entre a bateria
+        disponível e a distância até o destino (+ retorno à base se necessário).
+
+        Args:
+            destino: Coordenadas (x, y) do destino.
+            retorno_base: Se True, o destino É a base (sem custo de retorno).
+
+        Returns:
+            Valor de utilidade esperada (quanto maior, melhor).
+        """
+        # Distância Manhattan até o destino
+        dist_destino = (
+            abs(destino[0] - self._position[0])
+            + abs(destino[1] - self._position[1])
+        )
+
+        if retorno_base:
+            # Ir direto à base: não precisa calcular retorno
+            dist_total = dist_destino
+        else:
+            # Ir ao alvo + depois voltar à base
+            dist_retorno_base = (
+                abs(destino[0] - self.base_position[0])
+                + abs(destino[1] - self.base_position[1])
+            )
+            dist_total = dist_destino + dist_retorno_base
+
+        # Evita divisão por zero
+        if dist_total == 0:
+            return 100.0
+
+        # P(sucesso): probabilidade de completar a viagem com bateria suficiente
+        # Estimativa conservadora: assume custo médio de ~1.5 por passo
+        # (considerando possíveis zonas urbanas com custo 3×)
+        custo_estimado = dist_total * 1.5
+        p_sucesso = min(1.0, self._battery / max(custo_estimado, 1))
+
+        # Recompensas e penalidades
+        if retorno_base:
+            # Voltar à base: recompensa moderada (preserva o drone)
+            recompensa = 50.0
+            penalidade = 100.0  # Perder o drone longe da base
+        else:
+            # Ir ao alvo: recompensa alta (cumprir a missão)
+            recompensa = 100.0
+            penalidade = 150.0  # Perder o drone E não completar a missão
+
+        # Fator de risco: zonas urbanas no caminho consomem mais bateria
+        # Penaliza destinos que podem estar em/perto de zonas urbanas
+        risco_urbano = 1.0
+        if destino in self.zonas_urbanas:
+            risco_urbano = 0.85  # 15% de redução na utilidade
+
+        # MEU = P(sucesso) × Recompensa - P(falha) × Penalidade
+        utilidade = (
+            p_sucesso * recompensa * risco_urbano
+            - (1 - p_sucesso) * penalidade
+        )
+
+        return utilidade
+
+    def formulate_goal(self, state: Any) -> tuple[int, int] | None:
+        """Formula o próximo objetivo do agente usando Utilidade Máxima Esperada.
+
+        Estratégia com MEU (AIMA Cap. 16):
+        1. Se missão completa → None
+        2. Se não há alvos → retorna à base
+        3. Se bateria >= 30% → seleciona alvo mais próximo (guloso)
+        4. Se bateria < 30% → calcula U(ir ao alvo) vs U(voltar à base)
+           e escolhe a ação com maior utilidade esperada
 
         Args:
             state: Estado atual do agente (dict)
@@ -179,12 +251,36 @@ class AutonomousDroneAgent(SimpleProblemSolvingAgentProgram):
             print(f"\n🏠 Todos os alvos coletados. Retornando à base...")
             return self.base_position
 
-        # Seleciona o alvo mais próximo (guloso para otimizar bateria)
+        # Seleciona o alvo mais próximo (candidato principal)
         alvo_mais_proximo = min(
             self._targets,
             key=lambda t: abs(t[0] - self._position[0])
             + abs(t[1] - self._position[1]),
         )
+
+        # ── MEU: Decisão baseada em utilidade quando bateria baixa ──
+        limiar_bateria = 0.30 * self.battery_capacity
+
+        if self._battery < limiar_bateria:
+            # Calcula utilidade de cada opção
+            u_alvo = self._calcular_utilidade(alvo_mais_proximo, retorno_base=False)
+            u_base = self._calcular_utilidade(self.base_position, retorno_base=True)
+
+            print(f"\n⚡ Bateria baixa ({self._battery}/{self.battery_capacity}"
+                  f" = {self._battery / self.battery_capacity * 100:.0f}%)")
+            print(f"  📊 MEU — Utilidade Máxima Esperada (AIMA Cap. 16):")
+            print(f"     U(ir ao alvo {alvo_mais_proximo})  = {u_alvo:.2f}")
+            print(f"     U(voltar à base {self.base_position}) = {u_base:.2f}")
+
+            if u_base > u_alvo:
+                print(f"  🔋 Decisão MEU: RETORNAR À BASE (utilidade maior)")
+                self._returning_to_base = True
+                self._targets = frozenset()  # Abandona alvos restantes
+                return self.base_position
+            else:
+                print(f"  🎯 Decisão MEU: IR AO ALVO (utilidade maior)")
+
+        # ── Comportamento padrão: seleciona alvo mais próximo ──
 
         # Atualiza status do chamado correspondente
         for chamado in self._pending_chamados:
