@@ -1,84 +1,147 @@
-# 🛰️ Sentinela Estuarino — Agente Inteligente para Monitoramento do Rio Poxim
+# 🛰️ Sentinela Estuarino — Agente Autônomo para Monitoramento do Rio Poxim
 
-Sistema de agente autônomo (drone sentinela) para monitoramento ambiental do estuário do Rio Poxim, em Aracaju-SE. Utiliza algoritmos de busca (A*) do framework AIMA para navegação inteligente, integrado com uma API Flask de gestão de chamados/missões.
-
-O projeto segue os **princípios SOLID** e a arquitetura de agentes de Russell & Norvig (AIMA), garantindo código modular, escalável e sem "God Classes".
+Sistema de agente inteligente para monitoramento ambiental do estuário do Rio Poxim (Aracaju-SE), implementado com base no framework **AIMA** (Russell & Norvig). O drone autônomo navega em um grid 10×10 representando a região do estuário, utilizando **busca A*** para planejar rotas ótimas de coleta de amostras de poluição.
 
 ---
 
-## 📂 Estrutura do Projeto
+## 🧠 Modelagem do Problema
+
+### Descrição PEAS
+
+| Componente | Descrição |
+|------------|-----------|
+| **Performance** | Coletar todas as amostras de poluição, minimizar consumo de bateria, retornar à base |
+| **Ambiente** | Grid 10×10 do estuário do Rio Poxim com zonas urbanas, mangues e pontos de coleta |
+| **Atuadores** | Movimentação (N/S/L/O), coleta de amostras |
+| **Sensores** | GPS (posição), bateria, detecção de amostras próximas, tipo de zona |
+
+### Classificação do Ambiente
+
+| Propriedade | Classificação | Justificativa |
+|-------------|---------------|---------------|
+| Observabilidade | Parcialmente observável | O drone percebe apenas o entorno imediato |
+| Agentes | Mono-agente | Um único drone sentinela |
+| Determinismo | Determinístico | As ações têm efeitos previsíveis no grid |
+| Episodicidade | Sequencial | Cada ação afeta os estados futuros |
+| Dinamismo | Estático | O ambiente não muda durante o planejamento |
+| Continuidade | Discreto | Grid de células inteiras |
+
+### Estado, Ações e Objetivo
+
+**Estado:** `(pos_x, pos_y, bateria, frozenset(alvos_pendentes))`
+
+**Ações:** `CIMA`, `BAIXO`, `ESQUERDA`, `DIREITA`, `COLETAR`
+
+**Objetivo:** `alvos_pendentes == ∅` ∧ `posição == base(0,0)` ∧ `bateria > 0`
+
+**Custo das ações:**
+- Movimento em área natural: **−1 bateria**
+- Movimento em zona urbana (Urban Penalty): **−3 bateria**
+- Passagem por obstáculo de mangue: **bloqueada**
+
+---
+
+## � Algoritmos de Busca e Heurísticas
+
+### Algoritmo Principal: A*
+
+O agente utiliza `astar_search` do repositório AIMA com função de avaliação:
+
+```
+f(n) = g(n) + h(n)
+```
+
+onde:
+- `g(n)` = custo acumulado do caminho (com Urban Penalty)
+- `h(n)` = heurística admissível de Manhattan ajustada
+
+### Heurística: Manhattan + Vento Atlântico
+
+```python
+h(n) = |Δx| * fator_vento + |Δy| + custo_retorno_base
+```
+
+O **fator de Vento Atlântico** (1.5×) penaliza movimentos para leste, refletindo as condições reais de vento predominante em Aracaju. A heurística é **admissível** porque nunca superestima: o fator 1.5× é menor ou igual ao custo real de deslocamento contra o vento, e a estimativa de retorno à base usa sempre a distância Manhattan mínima.
+
+### Arquitetura Ambiente–Agente–Programa
+
+```
+┌─────────────────────────────────────────────┐
+│              PoximEnvironment               │  ← XYEnvironment (AIMA)
+│  - Grid 10×10 com obstáculos e zonas        │
+│  - execute_action() com Urban Penalty       │
+│  - percept() retorna estado local           │
+└────────────────┬────────────────────────────┘
+                 │ percept / action
+┌────────────────▼────────────────────────────┐
+│          AutonomousDroneAgent               │  ← SimpleProblemSolvingAgentProgram (AIMA)
+│  1. update_state(percept)                   │
+│  2. formulate_goal(state)                   │
+│  3. formulate_problem(state, goal)          │
+│  4. search(problem) → astar_search()        │
+└────────────────┬────────────────────────────┘
+                 │ PollutionMappingProblem
+┌────────────────▼────────────────────────────┐
+│         PollutionMappingProblem             │  ← Problem (AIMA)
+│  - actions(), result(), goal_test()         │
+│  - path_cost() com Urban Penalty            │
+│  - h() com ajuste de Vento Atlântico        │
+└─────────────────────────────────────────────┘
+```
+
+---
+
+## 📦 Estrutura de Arquivos
 
 ```
 inteligencia-artificial-ufs/
-├── aima-python/                     # Biblioteca AIMA (clone externo)
-├── interfaces/
-│   └── sensor_interfaces.py         # Protocolos de sensores (ISP/DIP)
-├── env/
-│   └── estuario.py                  # Ambiente estuarino (SRP)
-├── problems/
-│   └── search_problem.py            # Problema de busca A* (OCP)
+├── aima-python/                  # Biblioteca AIMA (clone externo)
+├── env/estuario.py               # PoximEnvironment — mundo do agente
+├── problems/search_problem.py    # PollutionMappingProblem — busca A*
 ├── drone_agents/
-│   ├── api_gateway.py               # Gateway de comunicação com API (SRP)
-│   └── drone_agent.py               # Agente autônomo do drone (LSP)
-├── app.py                           # API Flask — gestão de chamados
-├── main.py                          # Implementação original (preservada)
-├── main_autonomous.py               # Loop de coordenação do sistema
-├── requirements.txt                 # Dependências do projeto
-└── README.md                        # Este arquivo
+│   ├── drone_agent.py            # AutonomousDroneAgent — programa do agente
+│   └── api_gateway.py            # Comunicação com API de chamados
+├── interfaces/sensor_interfaces.py  # Abstrações de sensores
+├── app.py                        # API de gerenciamento de chamados
+├── main.py                       # Implementação inicial (preservada)
+├── main_autonomous.py            # Loop de simulação completo
+└── requirements.txt
 ```
 
 ---
 
-## 📋 Pré-requisitos
+## 🚀 Como Executar
 
-- Python 3.11 ou superior
-- Git
+### Pré-requisitos
 
-## 🚀 Instalação e Configuração
-
-1. **Clone este repositório** (se ainda não o fez):
-   ```bash
-   git clone https://github.com/Slotov7/inteligencia-artificial-ufs.git
-   cd inteligencia-artificial-ufs
-   ```
-
-2. **Clone a biblioteca `aima-python`**:
+1. Python 3.11+
+2. Clonar a biblioteca AIMA:
    ```bash
    git clone https://github.com/aimacode/aima-python.git
    ```
-
-3. **Instale as dependências**:
+3. Instalar dependências:
    ```bash
    pip install -r requirements.txt
    pip install numpy ipythonblocks
    ```
 
----
-
-## ▶️ Como Executar
-
 ### Simulação Autônoma (modo offline)
-
-Executa o agente com dados simulados, sem precisar da API Flask:
 
 ```bash
 python main_autonomous.py --simulacao
 ```
 
-### Com API Flask (modo completo)
+### Com API de Chamados (modo completo)
 
-1. Inicie o servidor de chamados em um terminal:
-   ```bash
-   python app.py
-   ```
-2. Em outro terminal, execute o agente:
-   ```bash
-   python main_autonomous.py
-   ```
+```bash
+# Terminal 1 — inicia o servidor de missões
+python app.py
 
-### Implementação Original
+# Terminal 2 — executa o agente
+python main_autonomous.py
+```
 
-O `main.py` original continua funcional:
+### Implementação original (`main.py`)
 
 ```bash
 python main.py
@@ -86,82 +149,28 @@ python main.py
 
 ---
 
-## 🧠 Arquitetura do Sistema
-
-### Princípios SOLID Aplicados
-
-| Princípio | Aplicação |
-|-----------|-----------|
-| **SRP** — Responsabilidade Única | `PoximEnvironment` gerencia o mundo; `APIGateway` gerencia comunicação; `AutonomousDroneAgent` gerencia decisões |
-| **OCP** — Aberto/Fechado | `PollutionMappingProblem` aceita novos algoritmos de busca sem modificação |
-| **LSP** — Substituição de Liskov | `AutonomousDroneAgent` pode ser substituído por `DroneManual` sem quebrar o ambiente |
-| **ISP** — Segregação de Interface | Interfaces separadas para telemetria, sensores químicos, proximidade e visão |
-| **DIP** — Inversão de Dependência | O agente depende de abstrações (`Protocol`), não de implementações concretas |
-
-### Descrição PEAS do Agente
-
-| Componente | Descrição |
-|------------|-----------|
-| **Performance** | Cobertura da área, detecção de poluentes, minimização de bateria, Urban Penalty |
-| **Ambiente** | Estuário do Rio Poxim, grid 10×10, zonas urbanas, obstáculos de mangue |
-| **Atuadores** | Movimentação (4 direções), coleta de amostras |
-| **Sensores** | Posição GPS, bateria, detecção de amostras, zona urbana |
-
-### Algoritmo A* com Vento Atlântico
-
-O drone utiliza busca A* com heurística admissível baseada na **distância de Manhattan ajustada pelo Vento Atlântico**:
-
-- Movimentos contra o vento predominante de leste recebem fator 1.5×
-- Zonas urbanas aplicam **Urban Penalty** de 3× no custo de bateria
-- A heurística é admissível e consistente, garantindo caminho ótimo
-
-### API de Chamados
-
-A API Flask (`app.py`) gerencia missões com autenticação HTTP Basic:
-
-- **Credenciais**: `admin` / `123456`
-- **Endpoints**: `GET/POST/PUT/DELETE /chamados`
-- **Status**: `aberto` → `em_andamento` → `fechado`
-
----
-
 ## 📊 Exemplo de Saída
 
 ```
-================================================================
   🛰️  SISTEMA ADEMA-DRONE — Monitoramento do Rio Poxim
 ================================================================
-
-📋 Chamados abertos sincronizados: 3
+📋 Chamados abertos: 3
    #1: Amostragem Ponto Norte - Mangue Degradado @ (7, 2)
-   #2: Verificação de Metais Pesados - Zona Industrial @ (3, 8)
+   #2: Verificação de Metais Pesados @ (3, 8)
    #3: Monitoramento Biodiversidade - Caranguejos @ (8, 6)
 
-========================================
-  Grid do Estuário (10×10)
-========================================
-   0 | 🤖 ·  ·  ·  ·  ·  ·  ·  ·  ·
-   1 | ·  🏙️ 🏙️ 🏙️ ·  ·  ·  ·  ·  ·
-   2 | ·  🏙️ 🏙️ ·  ·  ·  ·  🔴 ·  ·
-   3 | ·  ·  ·  ·  🏙️ 🏙️ 🌿 ·  ·  ·
-   4 | ·  ·  ·  ·  🌿 🌿 ·  🌿 ·  ·
-   5 | ·  ·  ·  ·  ·  🏙️ 🏙️ ·  ·  ·
-   6 | ·  ·  🌿 ·  ·  ·  ·  ·  🔴 ·
-   7 | ·  ·  ·  ·  ·  ·  ·  ·  ·  ·
-   8 | ·  ·  ·  🔴 ·  ·  ·  ·  ·  ·
-   9 | ·  ·  ·  ·  ·  ·  ·  ·  ·  ·
+🎯 Objetivo: (7, 2) | Bateria: 60
+  � Executando A* Search...
+  ✈️  Plano: ['DIREITA'×7, 'BAIXO'×2, 'COLETAR'] (10 ações)
 
-  📊 RELATÓRIO FINAL DA MISSÃO
-  Passos executados:      35
-  Chamados processados:   3/3
-  Bateria restante:       25/60
-  Missão completa:        ✅ Sim
+  📊 RELATÓRIO FINAL
+  Passos executados:   35
+  Chamados coletados:  3/3
+  Bateria restante:    25/60
+  Na base:             ✅ Sim
+  Missão completa:     ✅ Sim
 ```
 
-**Legenda**: 🤖 Drone | 🔴 Amostra | 🌿 Mangue | 🏙️ Zona Urbana
+**Legenda do grid:** 🤖 Drone | 🔴 Amostra | 🌿 Mangue | 🏙️ Zona Urbana
 
 ---
-
-## 👥 Autores
-
-- Projeto desenvolvido para a disciplina de Inteligência Artificial — Universidade Federal de Sergipe (UFS)
