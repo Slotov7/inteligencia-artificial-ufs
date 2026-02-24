@@ -22,7 +22,6 @@ import sys
 import os
 import time
 
-# Adiciona aima-python ao path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'aima-python'))
 
 from search import (
@@ -35,20 +34,17 @@ from search import (
 from problems.search_problem import PollutionMappingProblem
 
 
-# ============================================================================
-# Wrapper para Contagem de Nós Expandidos
-# ============================================================================
-
 class InstrumentedProblem:
-    """Wrapper que decora um Problem para contar nós expandidos.
+    """
+    Wrapper que decora um Problem para contar nós expandidos.
 
     Proxy transparente: delega todos os métodos ao problema original,
     mas intercepta chamadas a `actions()` para contar quantas vezes
     um estado é expandido (explorado).
 
     Attributes:
-        problem: Instância original de PollutionMappingProblem.
-        nos_expandidos: Contador de expansões.
+        problem (PollutionMappingProblem): Instância original do problema.
+        nos_expandidos (int): Contador de expansões.
     """
 
     def __init__(self, problem: PollutionMappingProblem) -> None:
@@ -56,7 +52,6 @@ class InstrumentedProblem:
         self.nos_expandidos: int = 0
 
     def actions(self, state):
-        """Conta a expansão e delega ao problema original."""
         self.nos_expandidos += 1
         return self.problem.actions(state)
 
@@ -72,7 +67,6 @@ class InstrumentedProblem:
     def h(self, node):
         return self.problem.h(node)
 
-    # Propriedades necessárias para os algoritmos do AIMA
     @property
     def initial(self):
         return self.problem.initial
@@ -90,30 +84,25 @@ class InstrumentedProblem:
         self.problem.goal = value
 
 
-# ============================================================================
-# Função de Execução de Busca com Métricas
-# ============================================================================
-
 def executar_busca(
     nome_algoritmo: str,
     funcao_busca,
     problem: PollutionMappingProblem,
 ) -> dict:
-    """Executa um algoritmo de busca e coleta métricas de desempenho.
+    """
+    Executa um algoritmo de busca e coleta métricas de desempenho.
 
     Args:
-        nome_algoritmo: Nome do algoritmo para exibição.
-        funcao_busca: Função de busca do AIMA (ex: astar_search).
-        problem: Instância do problema de busca.
+        nome_algoritmo (str): Nome do algoritmo para exibição.
+        funcao_busca (Callable): Função de busca do AIMA.
+        problem (PollutionMappingProblem): Instância do problema de busca.
 
     Returns:
-        Dict com métricas: nome, nós expandidos, tempo (ms),
-        custo do caminho, bateria consumida, solução encontrada.
+        dict: Métricas contendo nome, nós expandidos, tempo (ms),
+                custo do caminho, bateria consumida, solução e ações.
     """
-    # Envolve o problema com instrumentação
     instrumento = InstrumentedProblem(problem)
 
-    # Mede o tempo de execução
     inicio = time.perf_counter()
     resultado = funcao_busca(instrumento)
     fim = time.perf_counter()
@@ -131,10 +120,9 @@ def executar_busca(
             "acoes": [],
         }
 
-    # Extrai informações do nó solução
     custo = resultado.path_cost
     estado_final = resultado.state
-    bateria_inicial = problem.initial[2]  # bateria no estado inicial
+    bateria_inicial = problem.initial[2]
     bateria_final = estado_final[2]
     bateria_consumida = bateria_inicial - bateria_final
 
@@ -149,18 +137,13 @@ def executar_busca(
     }
 
 
-# ============================================================================
-# Configuração do Cenário de Teste
-# ============================================================================
-
 def criar_cenario() -> dict:
-    """Cria o cenário padrão do estuário do Rio Poxim.
-
-    Retorna a configuração compartilhada por todos os algoritmos,
-    incluindo grid, obstáculos, zonas urbanas e chamados.
+    """
+    Cria o cenário padrão do estuário do Rio Poxim com grid, obstáculos, 
+    zonas urbanas e chamados para os testes de busca.
 
     Returns:
-        Dict com configuração completa do cenário.
+        dict: Configuração completa do cenário.
     """
     return {
         "grid_size": (10, 10),
@@ -173,7 +156,6 @@ def criar_cenario() -> dict:
             (5, 5), (6, 5),
             (4, 3), (5, 3),
         },
-        # Chamados simulados (mesmos do APIGateway)
         "chamados": [
             {"id": 1, "titulo": "Ponto Norte - Mangue Degradado", "coord": (7, 2)},
             {"id": 2, "titulo": "Metais Pesados - Zona Industrial", "coord": (3, 8)},
@@ -182,22 +164,18 @@ def criar_cenario() -> dict:
     }
 
 
-# ============================================================================
-# Impressão da Tabela Comparativa
-# ============================================================================
-
 def imprimir_tabela(resultados: list[dict], titulo_chamado: str) -> None:
-    """Imprime tabela comparativa formatada dos resultados.
+    """
+    Imprime tabela comparativa formatada dos resultados de um chamado.
 
     Args:
-        resultados: Lista de dicts com métricas por algoritmo.
-        titulo_chamado: Título do chamado para contexto.
+        resultados (list[dict]): Lista de dicionários com métricas.
+        titulo_chamado (str): Título do chamado para contexto.
     """
     print(f"\n{'═' * 78}")
     print(f"  📋 {titulo_chamado}")
     print(f"{'═' * 78}")
 
-    # Cabeçalho
     print(
         f"  {'Algoritmo':<25} │ {'Nós Exp.':<10} │ {'Tempo (ms)':<12} │ "
         f"{'Custo':<8} │ {'Bateria':<8}"
@@ -219,7 +197,6 @@ def imprimir_tabela(resultados: list[dict], titulo_chamado: str) -> None:
 
     print()
 
-    # Destaque do melhor algoritmo
     validos = [r for r in resultados if r["solucao"] is not None]
     if validos:
         melhor_nos = min(validos, key=lambda r: r["nos_expandidos"])
@@ -229,16 +206,16 @@ def imprimir_tabela(resultados: list[dict], titulo_chamado: str) -> None:
 
 
 def imprimir_resumo_geral(todos_resultados: dict[str, list[dict]]) -> None:
-    """Imprime um resumo geral de todos os cenários.
+    """
+    Imprime um resumo geral e a média de eficiência de todos os cenários.
 
     Args:
-        todos_resultados: Dict mapeando título do chamado → lista de resultados.
+        todos_resultados (dict[str, list[dict]]): Dados de todos os cenários.
     """
     print(f"\n{'═' * 78}")
     print(f"  📊 RESUMO GERAL — COMPARAÇÃO DE ALGORITMOS")
     print(f"{'═' * 78}")
 
-    # Agregar por algoritmo
     algoritmos = ["BFS (Busca em Largura)", "Greedy Best-First", "A* Search"]
     totais: dict[str, dict] = {}
 
@@ -279,7 +256,6 @@ def imprimir_resumo_geral(todos_resultados: dict[str, list[dict]]) -> None:
 
     print()
 
-    # Determinar vencedor geral
     melhor = min(algoritmos, key=lambda n: totais[n]["total_nos"])
     print(f"  ✅ Algoritmo mais eficiente (menos nós): {melhor}")
     melhor_custo = min(algoritmos, key=lambda n: totais[n]["total_custo"])
@@ -295,13 +271,11 @@ def imprimir_resumo_geral(todos_resultados: dict[str, list[dict]]) -> None:
     print(f"{'═' * 78}\n")
 
 
-# ============================================================================
-# Execução Principal
-# ============================================================================
-
 def main() -> None:
-    """Executa a comparação completa de algoritmos de busca."""
-
+    """
+    Executa a comparação completa de algoritmos de busca resolvendo 
+    o problema de mapeamento de poluição para múltiplos chamados.
+    """
     print("=" * 78)
     print("  🧠 ANÁLISE COMPARATIVA DE ALGORITMOS DE BUSCA")
     print("  📍 Cenário: Estuário do Rio Poxim, Aracaju-SE")
@@ -311,7 +285,6 @@ def main() -> None:
     cenario = criar_cenario()
     todos_resultados: dict[str, list[dict]] = {}
 
-    # Para cada chamado, executa os 3 algoritmos
     for chamado in cenario["chamados"]:
         coord = chamado["coord"]
         titulo = f"Chamado #{chamado['id']}: {chamado['titulo']} → {coord}"
@@ -319,8 +292,6 @@ def main() -> None:
         print(f"\n\n🔬 Testando: {titulo}")
         print(f"   Origem: {cenario['base_position']} → Destino: {coord}")
 
-        # Cria o problema de busca: ir da base até o alvo e voltar
-        # Estado: (x, y, bateria, alvos_pendentes)
         alvo = frozenset({coord})
         estado_inicial = (
             cenario["base_position"][0],
@@ -329,9 +300,6 @@ def main() -> None:
             alvo,
         )
 
-        # Cria problema para ir ao alvo (objetivo = posição do alvo quando
-        # todos alvos coletados)
-        # Para comparação justa, usamos o goal_test padrão: alvos vazios + na base
         problem = PollutionMappingProblem(
             initial=estado_inicial,
             goal=cenario["base_position"],
@@ -340,18 +308,12 @@ def main() -> None:
             zonas_urbanas=cenario["zonas_urbanas"],
         )
 
-        # Executa os 3 algoritmos com o MESMO problema
         resultados = []
 
-        # 1. BFS — Busca em Largura (Cap. 3, Fig 3.11)
-        # BFS não usa heurística, expande todos os nós nível a nível
         resultados.append(
             executar_busca("BFS (Busca em Largura)", breadth_first_graph_search, problem)
         )
 
-        # 2. Greedy Best-First Search (Cap. 3, Fig 3.14)
-        # Usa apenas h(n), ignora g(n) — rápido mas não ótimo
-        # greedy_best_first_graph_search(problem, f) requer f=h(n)
         resultados.append(
             executar_busca(
                 "Greedy Best-First",
@@ -360,16 +322,12 @@ def main() -> None:
             )
         )
 
-        # 3. A* Search (Cap. 3, Fig 3.14)
-        # Usa f(n) = g(n) + h(n) — ótimo com heurística admissível
         resultados.append(
             executar_busca("A* Search", astar_search, problem)
         )
 
-        # Imprime tabela comparativa para este chamado
         imprimir_tabela(resultados, titulo)
 
-        # Mostra as soluções encontradas
         for r in resultados:
             if r["solucao"] is not None:
                 print(f"  📍 {r['algoritmo']}: {r['acoes'][:10]}{'...' if len(r['acoes']) > 10 else ''}")
@@ -378,7 +336,6 @@ def main() -> None:
 
         todos_resultados[titulo] = resultados
 
-    # Resumo geral
     imprimir_resumo_geral(todos_resultados)
 
 

@@ -20,16 +20,11 @@ from flask import Flask, jsonify, request, Response
 
 app = Flask(__name__)
 
-# ============================================================================
-# Credenciais e Dados em Memória
-# ============================================================================
 
 USUARIOS: dict[str, str] = {
     "admin": "123456"
 }
 
-# Armazenamento de chamados em memória. Cada chamado é um dict com:
-#   id, titulo, descricao, status, coordenadas, dados_ecotoxicologicos
 chamados: list[dict[str, Any]] = [
     {
         "id": 1,
@@ -62,14 +57,9 @@ chamados: list[dict[str, Any]] = [
 
 proximo_id: int = 4
 
-
-# ============================================================================
-# Decorator de Autenticação
-# ============================================================================
-
 def autenticar(f):
-    """Decorator que exige autenticação HTTP Basic para acessar o endpoint.
-
+    """
+    Decorator que exige autenticação HTTP Basic para acessar o endpoint.
     Verifica as credenciais contra o dicionário USUARIOS.
     Retorna 401 Unauthorized se as credenciais forem inválidas.
     """
@@ -84,11 +74,6 @@ def autenticar(f):
             )
         return f(*args, **kwargs)
     return decorador
-
-
-# ============================================================================
-# Endpoints da API
-# ============================================================================
 
 @app.route("/chamados", methods=["GET"])
 @autenticar
@@ -110,7 +95,8 @@ def obter_chamado(chamado_id: int):
 @app.route("/chamados", methods=["POST"])
 @autenticar
 def criar_chamado():
-    """Cria um novo chamado de missão.
+    """
+    Cria um novo chamado de missão.
 
     Corpo da requisição (JSON):
         titulo (str): Título descritivo do chamado
@@ -146,8 +132,8 @@ def criar_chamado():
 @app.route("/chamados/<int:chamado_id>", methods=["PUT"])
 @autenticar
 def atualizar_chamado(chamado_id: int):
-    """Atualiza um chamado existente.
-
+    """
+    Atualiza um chamado existente.
     Permite alterar status (aberto → em_andamento → fechado),
     dados ecotoxicológicos e demais campos.
     """
@@ -157,7 +143,6 @@ def atualizar_chamado(chamado_id: int):
 
     for chamado in chamados:
         if chamado["id"] == chamado_id:
-            # Atualiza apenas os campos enviados
             if "status" in dados:
                 chamado["status"] = dados["status"]
             if "titulo" in dados:
@@ -185,10 +170,6 @@ def deletar_chamado(chamado_id: int):
 
     return jsonify({"erro": "Chamado não encontrado"}), 404
 
-
-# ============================================================================
-# Ponto de Entrada
-# ============================================================================
 
 if __name__ == "__main__":
     print("=" * 60)
