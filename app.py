@@ -1,9 +1,8 @@
 """
 app.py — API Flask para Gestão de Chamados (Missões de Monitoramento)
 
-Backend desenvolvido por Samuel para gerenciar chamados/tickets de missão
-no estuário do Rio Poxim. Fornece autenticação HTTP Basic e CRUD completo
-com persistência em memória.
+Backend para gerenciar chamados/tickets de missão no estuário do Rio Poxim.
+Fornece autenticação HTTP Basic, CRUD completo e documentação Swagger em /apidocs.
 
 Endpoints:
     GET    /chamados       — Lista todos os chamados
@@ -11,58 +10,74 @@ Endpoints:
     POST   /chamados       — Criar novo chamado
     PUT    /chamados/<id>  — Atualizar chamado (status, dados ecotoxicológicos)
     DELETE /chamados/<id>  — Remover chamado
+    GET    /apidocs        — Interface Swagger UI
 """
 
 from functools import wraps
 from typing import Any
 
 from flask import Flask, jsonify, request, Response
+from flasgger import Swagger
 
 app = Flask(__name__)
 
-
-USUARIOS: dict[str, str] = {
-    "admin": "123456"
+swagger_config = {
+    "headers": [],
+    "specs": [
+        {
+            "endpoint": "apispec",
+            "route": "/apispec.json",
+            "rule_filter": lambda rule: True,
+            "model_filter": lambda tag: True,
+        }
+    ],
+    "static_url_path": "/flasgger_static",
+    "swagger_ui": True,
+    "specs_route": "/apidocs",
 }
 
-chamados: list[dict[str, Any]] = [
-    {
-        "id": 1,
-        "titulo": "Amostragem Ponto Norte - Mangue Degradado",
-        "descricao": "Coletar amostras de água e sedimento no trecho norte "
-                     "onde há despejo de esgoto doméstico identificado.",
-        "status": "aberto",
-        "coordenadas": {"x": 7, "y": 2},
-        "dados_ecotoxicologicos": None
+swagger_template = {
+    "swagger": "2.0",
+    "info": {
+        "title": "ADEMA-Drone — API de Chamados Rio Poxim",
+        "description": (
+            "API REST para gestão de chamados de monitoramento ambiental "
+            "no estuário do Rio Poxim, Aracaju-SE. "
+            "Use **admin / 123456** para autenticação HTTP Basic."
+        ),
+        "version": "1.0.0",
     },
-    {
-        "id": 2,
-        "titulo": "Verificação de Metais Pesados - Zona Industrial",
-        "descricao": "Realizar medição de metais pesados próximo à zona "
-                     "industrial adjacente ao estuário.",
-        "status": "aberto",
-        "coordenadas": {"x": 3, "y": 8},
-        "dados_ecotoxicologicos": None
+    "host": "localhost:5000",
+    "basePath": "/",
+    "schemes": ["http"],
+    "securityDefinitions": {
+        "basicAuth": {
+            "type": "basic",
+            "description": "Usuário: admin | Senha: 123456",
+        }
     },
-    {
-        "id": 3,
-        "titulo": "Monitoramento Biodiversidade - Berçário de Caranguejos",
-        "descricao": "Avaliar condições do habitat do caranguejo-uçá "
-                     "(Ucides cordatus) no manguezal sul.",
-        "status": "aberto",
-        "coordenadas": {"x": 8, "y": 6},
-        "dados_ecotoxicologicos": None
-    },
-]
+    "security": [{"basicAuth": []}],
+}
 
-proximo_id: int = 4
+Swagger(app, config=swagger_config, template=swagger_template)
+
+# ---------------------------------------------------------------------------
+# Dados em memória
+# ---------------------------------------------------------------------------
+
+USUARIOS: dict[str, str] = {"admin": "123456"}
+
+chamados: list[dict[str, Any]] = []
+
+proximo_id: int = 1
+
+
+# ---------------------------------------------------------------------------
+# Autenticação
+# ---------------------------------------------------------------------------
 
 def autenticar(f):
-    """
-    Decorator que exige autenticação HTTP Basic para acessar o endpoint.
-    Verifica as credenciais contra o dicionário USUARIOS.
-    Retorna 401 Unauthorized se as credenciais forem inválidas.
-    """
+    """Decorator que exige autenticação HTTP Basic."""
     @wraps(f)
     def decorador(*args, **kwargs):
         auth = request.authorization
@@ -70,22 +85,88 @@ def autenticar(f):
             return Response(
                 "Acesso não autorizado. Credenciais inválidas.",
                 401,
-                {"WWW-Authenticate": 'Basic realm="Login Necessário"'}
+                {"WWW-Authenticate": 'Basic realm="Login Necessário"'},
             )
         return f(*args, **kwargs)
     return decorador
 
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
+
 @app.route("/chamados", methods=["GET"])
 @autenticar
 def listar_chamados():
-    """Lista todos os chamados cadastrados no sistema."""
+    """
+    Lista todos os chamados cadastrados.
+    ---
+    tags:
+      - Chamados
+    security:
+      - basicAuth: []
+    responses:
+      200:
+        description: Lista de chamados
+        schema:
+          type: array
+          items:
+            $ref: '#/definitions/Chamado'
+    definitions:
+      Chamado:
+        type: object
+        properties:
+          id:
+            type: integer
+            example: 1
+          titulo:
+            type: string
+            example: "Amostragem Ponto Norte"
+          descricao:
+            type: string
+          status:
+            type: string
+            enum: [aberto, em_andamento, fechado]
+            example: aberto
+          coordenadas:
+            type: object
+            properties:
+              x:
+                type: integer
+                example: 7
+              y:
+                type: integer
+                example: 2
+          dados_ecotoxicologicos:
+            type: object
+    """
     return jsonify(chamados), 200
 
 
 @app.route("/chamados/<int:chamado_id>", methods=["GET"])
 @autenticar
 def obter_chamado(chamado_id: int):
-    """Retorna os detalhes de um chamado específico pelo ID."""
+    """
+    Retorna os detalhes de um chamado específico.
+    ---
+    tags:
+      - Chamados
+    security:
+      - basicAuth: []
+    parameters:
+      - in: path
+        name: chamado_id
+        type: integer
+        required: true
+        description: ID do chamado
+    responses:
+      200:
+        description: Chamado encontrado
+        schema:
+          $ref: '#/definitions/Chamado'
+      404:
+        description: Chamado não encontrado
+    """
     for chamado in chamados:
         if chamado["id"] == chamado_id:
             return jsonify(chamado), 200
@@ -97,12 +178,48 @@ def obter_chamado(chamado_id: int):
 def criar_chamado():
     """
     Cria um novo chamado de missão.
-
-    Corpo da requisição (JSON):
-        titulo (str): Título descritivo do chamado
-        descricao (str): Descrição detalhada da missão
-        coordenadas (dict): {"x": int, "y": int} — posição no grid
-        status (str, opcional): Status inicial (default: "aberto")
+    ---
+    tags:
+      - Chamados
+    security:
+      - basicAuth: []
+    parameters:
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          required:
+            - titulo
+            - coordenadas
+          properties:
+            titulo:
+              type: string
+              example: "Novo Ponto de Coleta"
+            descricao:
+              type: string
+              example: "Descrição da missão"
+            status:
+              type: string
+              enum: [aberto, em_andamento, fechado]
+              example: aberto
+            coordenadas:
+              type: object
+              required: [x, y]
+              properties:
+                x:
+                  type: integer
+                  example: 5
+                y:
+                  type: integer
+                  example: 5
+    responses:
+      201:
+        description: Chamado criado com sucesso
+        schema:
+          $ref: '#/definitions/Chamado'
+      400:
+        description: Dados inválidos
     """
     global proximo_id
     dados = request.get_json()
@@ -120,7 +237,7 @@ def criar_chamado():
         "descricao": dados.get("descricao", ""),
         "status": dados.get("status", "aberto"),
         "coordenadas": coordenadas,
-        "dados_ecotoxicologicos": None
+        "dados_ecotoxicologicos": None,
     }
 
     chamados.append(novo_chamado)
@@ -134,8 +251,49 @@ def criar_chamado():
 def atualizar_chamado(chamado_id: int):
     """
     Atualiza um chamado existente.
-    Permite alterar status (aberto → em_andamento → fechado),
-    dados ecotoxicológicos e demais campos.
+    ---
+    tags:
+      - Chamados
+    security:
+      - basicAuth: []
+    parameters:
+      - in: path
+        name: chamado_id
+        type: integer
+        required: true
+        description: ID do chamado
+      - in: body
+        name: body
+        required: true
+        schema:
+          type: object
+          properties:
+            status:
+              type: string
+              enum: [aberto, em_andamento, fechado]
+              example: em_andamento
+            titulo:
+              type: string
+            descricao:
+              type: string
+            coordenadas:
+              type: object
+              properties:
+                x:
+                  type: integer
+                y:
+                  type: integer
+            dados_ecotoxicologicos:
+              type: object
+    responses:
+      200:
+        description: Chamado atualizado
+        schema:
+          $ref: '#/definitions/Chamado'
+      400:
+        description: Corpo da requisição vazio
+      404:
+        description: Chamado não encontrado
     """
     dados = request.get_json()
     if not dados:
@@ -153,7 +311,6 @@ def atualizar_chamado(chamado_id: int):
                 chamado["coordenadas"] = dados["coordenadas"]
             if "dados_ecotoxicologicos" in dados:
                 chamado["dados_ecotoxicologicos"] = dados["dados_ecotoxicologicos"]
-
             return jsonify(chamado), 200
 
     return jsonify({"erro": "Chamado não encontrado"}), 404
@@ -162,7 +319,25 @@ def atualizar_chamado(chamado_id: int):
 @app.route("/chamados/<int:chamado_id>", methods=["DELETE"])
 @autenticar
 def deletar_chamado(chamado_id: int):
-    """Remove um chamado do sistema."""
+    """
+    Remove um chamado do sistema.
+    ---
+    tags:
+      - Chamados
+    security:
+      - basicAuth: []
+    parameters:
+      - in: path
+        name: chamado_id
+        type: integer
+        required: true
+        description: ID do chamado a remover
+    responses:
+      200:
+        description: Chamado removido com sucesso
+      404:
+        description: Chamado não encontrado
+    """
     for i, chamado in enumerate(chamados):
         if chamado["id"] == chamado_id:
             chamados.pop(i)
@@ -174,7 +349,8 @@ def deletar_chamado(chamado_id: int):
 if __name__ == "__main__":
     print("=" * 60)
     print("  API de Gestão de Chamados — Rio Poxim")
-    print("  Servidor: http://localhost:5000")
+    print("  Servidor:    http://localhost:5000")
+    print("  Swagger UI:  http://localhost:5000/apidocs")
     print("  Credenciais: admin / 123456")
     print("=" * 60)
     app.run(debug=True, port=5000)

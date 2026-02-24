@@ -273,8 +273,10 @@ class PoximEnvironment(XYEnvironment):
 
                 if has_agent:
                     row += " 🤖"
+                elif has_sample and is_urban:
+                    row += " 🟠"  # amostra em zona urbana (custo 3x)
                 elif has_sample:
-                    row += " 🔴"
+                    row += " 🔴"  # amostra em área natural (custo 1x)
                 elif has_obstacle:
                     row += " 🌿"
                 elif is_base:
